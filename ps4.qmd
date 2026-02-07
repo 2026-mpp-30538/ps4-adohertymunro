@@ -1,0 +1,393 @@
+---
+title: "title"
+author: "author"
+date: "date"
+format: 
+  pdf:
+    include-in-header: 
+       text: |
+         \usepackage{fvextra}
+         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+include-before-body:
+  text: |
+    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{
+      showspaces = false,
+      showtabs = false,
+      breaksymbolleft={},
+      breaklines
+    }
+output:
+  echo: false
+  eval: false
+---
+
+**Due 02/07 at 5:00PM Central.**
+
+"This submission is my work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: ADM
+
+### Github Classroom Assignment Setup and Submission Instructions
+
+1.  **Accepting and Setting up the PS4 Assignment Repository**
+    -   Each student must individually accept the repository for the problem set from Github Classroom ("ps4") -- <https://classroom.github.com/a/hWhtcHqH>
+        -   You will be prompted to select your cnetid from the list in order to link your Github account to your cnetid.
+        -   If you can't find your cnetid in the link above, click "continue to next step" and accept the assignment, then add your name, cnetid, and Github account to this Google Sheet and we will manually link it: <https://rb.gy/9u7fb6>
+    -   If you authenticated and linked your Github account to your device, you should be able to clone your PS4 assignment repository locally.
+    -   Contents of PS4 assignment repository:
+        -   `ps4_template.qmd`: this is the Quarto file with the template for the problem set. You will write your answers to the problem set here.
+2.  **Submission Process**:
+    -   Knit your completed solution `ps4.qmd` as a pdf `ps4.pdf`.
+        -   Your submission does not need runnable code. Instead, you will tell us either what code you ran or what output you got.
+    -   To submit, push `ps4.qmd` and `ps4.pdf` to your PS4 assignment repository. Confirm on Github.com that your work was successfully pushed.
+
+### Grading
+- You will be graded on what was last pushed to your PS4 assignment repository before the assignment deadline
+- Problem sets will be graded for completion as: {missing (0%); ✓- (incomplete, 50%); ✓+ (excellent, 100%)}
+    - The percent values assigned to each problem denote how long we estimate the problem will take as a share of total time spent on the problem set, not the points they are associated with.
+- In order for your submission to be considered complete, you need to push both your `ps4.qmd` and `ps4.pdf` to your repository. Submissions that do not include both files will automatically receive 50% credit.
+
+
+\newpage
+
+```{python}
+import pandas as pd
+import altair as alt
+import time
+
+import warnings 
+warnings.filterwarnings('ignore')
+alt.renderers.enable("png")
+```
+
+
+## Step 1: Develop initial scraper and crawler
+
+
+```{python}
+import requests 
+from bs4 import BeautifulSoup
+
+
+url = 'https://oig.hhs.gov/fraud/enforcement/'
+response = requests.get(url)
+html = response.text
+
+soup = BeautifulSoup(html, "html.parser")
+```
+
+Grab all enforcement action cards, which are denoted by "<li>":
+```{python}
+
+enforce_acts = soup.find_all('li', class_ = 'usa-card')
+
+data = []
+for act in enforce_acts:
+
+  head = act.find('h2', class_='usa-card__heading')
+  if head and head.find('a'):
+    title = head.find('a').text.strip()
+    link = head.find('a')['href']
+
+    if link.startswith('/'):
+      link = 'https://oig.hhs.gov' + link
+  else: 
+    continue
+
+  date_info = act.find('span', class_ = 'text-base-dark')
+  date = date_info.text.strip() if date_info else None
+
+  tag = act.find('li', class_='display-inline-block')
+  category = tag.text.strip() if tag else None
+
+  data.append({
+    'Title': title,
+    'Date': date,
+    'Category': category,
+    'Link': link
+  })
+
+enforcement_data = pd.DataFrame(data)
+
+enforcement_data.head()
+```
+
+## Step 2: Making the scraper dynamic
+
+### 1. Turning the scraper into a function 
+
+* a. Pseudo-Code
+
+Function: dynamic_scrape(month, year)
+  Purpose: scrape all enforcement actions from a given date to the present
+  Input: Month and Year (in string format)
+  Output: Dataframe with Title, Category, Date, and link to enforcement action
+
+  Step 1: start with base URL and send GET request
+  Step 2: Parse HTML with BeautifulSoup as in part 1, get all enforcement actions
+  Step 3: Convert to dataframe format as above
+  Step 4: Move to a new page and pull as above, convert. If the last date on the page is more recent that the input date, add a counter and move to the next page (need to use a while loop for this).
+  Step 5: If the last date on the page is NOT more recent than the end date, stop pulling. convert list to a dataframe, and filter the dates pulled that were outside the range.
+  Step 6: Return the tidy dataframe.
+
+
+* b. Create Dynamic Scraper
+
+```{python}
+
+from datetime import datetime
+
+def dynamic_scraper(date):
+
+  end_date = datetime.strptime(date, '%B %Y')
+  if end_date < datetime(2013, 1, 1):
+    print("Please restrict date to 2013 or more recent; enforcement actions prior to 2013 not listed")
+    return 
+  else:
+    pass
+
+  data = []
+  url = 'https://oig.hhs.gov/fraud/enforcement/'
+  response = requests.get(url)
+  html = response.text
+
+  soup = BeautifulSoup(html, "html.parser")
+  enforce_acts = soup.find_all('li', class_ = 'usa-card')
+  
+  for act in enforce_acts:
+
+    head = act.find('h2', class_='usa-card__heading')
+    if head and head.find('a'):
+      title = head.find('a').text.strip()
+      link = head.find('a')['href']
+
+      if link.startswith('/'):
+        link = 'https://oig.hhs.gov' + link
+    else: 
+      continue
+
+    date_info = act.find('span', class_ = 'text-base-dark')
+    date = date_info.text.strip() if date_info else None 
+
+    tag = act.find('li', class_='display-inline-block')
+    category = tag.text.strip() if tag else None
+
+    data.append({
+    'Title': title,
+    'Date': date,
+    'Category': category,
+    'Link': link
+  })
+
+  enforcement_data = pd.DataFrame(data)
+
+  last_date = enforcement_data.iloc[-1]['Date']
+  last_date = datetime.strptime(last_date, '%B %d, %Y')
+    
+  page = 2
+  
+  while last_date > end_date:
+    data = []
+    url = f'https://oig.hhs.gov/fraud/enforcement/?page={page}'
+    response = requests.get(url)
+    html = response.text
+
+    soup = BeautifulSoup(html, "html.parser")
+    enforce_acts = soup.find_all('li', class_ = 'usa-card')
+  
+    for act in enforce_acts:
+
+      head = act.find('h2', class_='usa-card__heading')
+      if head and head.find('a'):
+        title = head.find('a').text.strip()
+        link = head.find('a')['href']
+
+        if link.startswith('/'):
+          link = 'https://oig.hhs.gov' + link
+      else: 
+        continue
+
+      date_info = act.find('span', class_ = 'text-base-dark')
+      date = date_info.text.strip() if date_info else None 
+
+      tag = act.find('li', class_='display-inline-block')
+      category = tag.text.strip() if tag else None
+
+      data.append({
+      'Title': title,
+      'Date': date,
+      'Category': category,
+      'Link': link
+      })
+
+    data = pd.DataFrame(data)
+    enforcement_data = pd.concat([enforcement_data, data], ignore_index=True)
+    
+    last_date = enforcement_data.iloc[-1]['Date']
+    last_date = datetime.strptime(last_date, '%B %d, %Y')
+
+    page += 1
+    time.sleep(1)
+
+  enforcement_data['Date'] = pd.to_datetime(enforcement_data['Date'], format='%B %d, %Y')
+  enforcement_data = enforcement_data[enforcement_data['Date'] >= end_date]
+
+  return enforcement_data
+      
+```
+
+* c. Test Your Code
+
+```{python}
+
+RUN_SCRAPER = False
+
+if RUN_SCRAPER:
+
+  df = dynamic_scraper('January 2024')
+
+else:
+  pass
+
+
+```
+
+This pulled 1787 enforcement actions. The last one is from 01-03-2024 and is titled "Former Nurse Aide Indicted In Death Of Clarksville Patient Arrested In Georgia"
+
+Now, January 2022:
+
+```{python}
+
+RUN_SCRAPER = False
+
+if RUN_SCRAPER:
+
+  data = dynamic_scraper('January 2022')
+
+  data.to_csv('enforcement_actions_year_month.csv')
+
+else:
+
+  data = pd.read_csv('enforcement_actions_year_month.csv')
+
+```
+
+## Step 3: Plot data based on scraped data
+
+### 1. Plot the number of enforcement actions over time
+
+```{python}
+
+actions_by_month = alt.Chart(data, title='Enforcement Actions by Month').mark_area(opacity=0.75).encode(
+
+  x = alt.X('yearmonth(Date):T', title = 'Month and Year'),
+  y = alt.Y('count()', title = 'Count')
+)
+
+actions_by_month
+
+```
+
+### 2. Plot the number of enforcement actions categorized:
+
+* based on "Criminal and Civil Actions" vs. "State Enforcement Agencies"
+
+```{python}
+
+cca_sea = data[data['Category'].isin(['Criminal and Civil Actions', 'State Enforcement Agencies'])]
+
+cca_sea['Date'] = pd.to_datetime(cca_sea['Date'])
+
+cca_sea_plot = alt.Chart(cca_sea, title="Enforcement Over Time for Two Categories").mark_line().encode(
+  x = alt.X('yearmonth(Date):T', title = 'Month and Year'),
+  y = alt.Y('count():Q', title = 'Number of Actions'),
+  color=alt.Color('Category:N',
+  legend=alt.Legend(title='Enforcement Type'))
+)
+
+cca_sea_plot
+
+```
+
+* based on five topics
+
+For this section, I used Claude to read the csv I exported and gave it the following instructions:
+
+❯ I want you to read the "Title" section and help me classify them into five categories based on the following
+  instructions: "Five topics in the “Criminal and Civil Actions” category: “Health Care Fraud”,
+  “Financial Fraud”, “Drug Enforcement”, “Bribery/Corruption”, and “Other”. Hint:
+  You will need to divide the five topics manually by looking at the title and assigning
+  the relevant topic. For example, if you find the word “bank” or “financial” in the
+  title of an action, then that action should probably belong to “Financial Fraud” topic.
+  We suggest using AI to identify patterns in your scraped data and suggest ways of
+  classifying based on the titles."
+
+It gave me the following:
+
+ Based on my analysis of the enforcement actions data, here's a classification approach for the five topics:
+
+  Classification Strategy for the Five Topics:
+
+  1. Health Care Fraud
+
+  - Medicare/Medicaid fraud
+  - False claims/billing
+  - Hospice/home health fraud
+  - Durable medical equipment schemes
+  - Unnecessary services
+  - Patient dumping violations
+  - COVID-19 relief fraud (healthcare-related)
+
+  2. Financial Fraud
+
+  - Money laundering
+  - Banking fraud
+  - Securities fraud
+  - Wire fraud (non-healthcare)
+  - Credit card fraud
+  - Embezzlement from government programs
+
+  3. Drug Enforcement
+
+  - Illegal distribution of controlled substances
+  - Opioid/oxycodone distribution
+  - Prescription fraud
+  - Drug diversion schemes
+  - Adulterated medications
+
+  4. Bribery/Corruption
+
+  - Kickback schemes
+  - Paying/receiving illegal remuneration
+  - Bribery of officials
+  - Corruption in contracting
+
+  5. Other
+
+  - Assault/abuse of patients
+  - Identity theft
+  - Obstruction of justice
+  - Jan 6 Capitol breach (oddly in the data)
+  - Cases that don't fit other categories
+
+  Key Classification Tips:
+
+  1. Look for keywords in titles:
+    - "kickback" → Bribery/Corruption
+    - "oxycodone", "opioid", "controlled substance" → Drug Enforcement
+    - "banker", "money laundering" → Financial Fraud
+    - "Medicare", "Medicaid", "false claims" → Health Care Fraud
+  2. Priority order: Check in this sequence:
+    - Drug Enforcement (most specific)
+    - Bribery/Corruption (kickbacks are common)
+    - Financial Fraud (non-healthcare financial crimes)
+    - Health Care Fraud (most common category)
+    - Other (everything else)
+  3. Overlap handling: Some cases involve multiple elements (e.g., kickbacks for Medicare fraud). Prioritize:
+    - If drugs are involved → Drug Enforcement
+    - If kickbacks/bribes are primary → Bribery/Corruption
+    - Otherwise → Health Care Fraud
+
+
+
+```{python}
+
+```
