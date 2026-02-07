@@ -1,7 +1,7 @@
 ---
-title: "title"
-author: "author"
-date: "date"
+title: "Problem Set 4"
+author: "Andrew Doherty Munro"
+date: "February 7, 2026"
 format: 
   pdf:
     include-in-header: 
@@ -74,7 +74,7 @@ html = response.text
 soup = BeautifulSoup(html, "html.parser")
 ```
 
-Grab all enforcement action cards, which are denoted by "<li>":
+Grab all enforcement action cards, which are denoted by "li":
 ```{python}
 
 enforce_acts = soup.find_all('li', class_ = 'usa-card')
@@ -116,17 +116,19 @@ enforcement_data.head()
 
 * a. Pseudo-Code
 
-Function: dynamic_scrape(month, year)
-  Purpose: scrape all enforcement actions from a given date to the present
-  Input: Month and Year (in string format)
-  Output: Dataframe with Title, Category, Date, and link to enforcement action
+Function: dynamic_scrape(month, year)  
+  Purpose: scrape all enforcement actions from a given date to the present  
+  Input: Month and Year (in string format)  
+  Output: Dataframe with Title, Category, Date, and link to enforcement action  
 
-  Step 1: start with base URL and send GET request
-  Step 2: Parse HTML with BeautifulSoup as in part 1, get all enforcement actions
-  Step 3: Convert to dataframe format as above
-  Step 4: Move to a new page and pull as above, convert. If the last date on the page is more recent that the input date, add a counter and move to the next page (need to use a while loop for this).
-  Step 5: If the last date on the page is NOT more recent than the end date, stop pulling. convert list to a dataframe, and filter the dates pulled that were outside the range.
-  Step 6: Return the tidy dataframe.
+  Step 1: start with base URL and send GET request  
+  Step 2: Parse HTML with BeautifulSoup as in part 1, get all enforcement actions  
+  Step 3: Convert to dataframe format as above  
+  Step 4: Check the last date pulled by selecting the last row of the dataframe. If this date is more recent than the date input, enter a while loop.  
+  Step 5: The while loop will pull all enforcement actions from the next page using an f-string for the url. It will continue to do so for each page, append the dataframe, and update the page counter by one until the condition end_date > last_date is no longer satisfied  
+  Step 6: Once the last action pulled on a page is further back than our desired end date, exit the loop.  
+  Step 7: Convert the dataframe's dates to datetime format, and filter out the dates that were pulled outside of our range.  
+  Step 8: Return a tidy dataframe  
 
 
 * b. Create Dynamic Scraper
@@ -270,6 +272,15 @@ else:
 
 ```
 
+```{python}
+
+print(len(data))
+print(data.iloc[-1]['Date'])
+
+```
+
+This pulled 3377 enforcement actions dating back to 1/4/22
+
 ## Step 3: Plot data based on scraped data
 
 ### 1. Plot the number of enforcement actions over time
@@ -309,85 +320,142 @@ cca_sea_plot
 
 * based on five topics
 
-For this section, I used Claude to read the csv I exported and gave it the following instructions:
-
-❯ I want you to read the "Title" section and help me classify them into five categories based on the following
-  instructions: "Five topics in the “Criminal and Civil Actions” category: “Health Care Fraud”,
-  “Financial Fraud”, “Drug Enforcement”, “Bribery/Corruption”, and “Other”. Hint:
-  You will need to divide the five topics manually by looking at the title and assigning
-  the relevant topic. For example, if you find the word “bank” or “financial” in the
-  title of an action, then that action should probably belong to “Financial Fraud” topic.
-  We suggest using AI to identify patterns in your scraped data and suggest ways of
-  classifying based on the titles."
-
-It gave me the following:
-
- Based on my analysis of the enforcement actions data, here's a classification approach for the five topics:
-
-  Classification Strategy for the Five Topics:
-
-  1. Health Care Fraud
-
-  - Medicare/Medicaid fraud
-  - False claims/billing
-  - Hospice/home health fraud
-  - Durable medical equipment schemes
-  - Unnecessary services
-  - Patient dumping violations
-  - COVID-19 relief fraud (healthcare-related)
-
-  2. Financial Fraud
-
-  - Money laundering
-  - Banking fraud
-  - Securities fraud
-  - Wire fraud (non-healthcare)
-  - Credit card fraud
-  - Embezzlement from government programs
-
-  3. Drug Enforcement
-
-  - Illegal distribution of controlled substances
-  - Opioid/oxycodone distribution
-  - Prescription fraud
-  - Drug diversion schemes
-  - Adulterated medications
-
-  4. Bribery/Corruption
-
-  - Kickback schemes
-  - Paying/receiving illegal remuneration
-  - Bribery of officials
-  - Corruption in contracting
-
-  5. Other
-
-  - Assault/abuse of patients
-  - Identity theft
-  - Obstruction of justice
-  - Jan 6 Capitol breach (oddly in the data)
-  - Cases that don't fit other categories
-
-  Key Classification Tips:
-
-  1. Look for keywords in titles:
-    - "kickback" → Bribery/Corruption
-    - "oxycodone", "opioid", "controlled substance" → Drug Enforcement
-    - "banker", "money laundering" → Financial Fraud
-    - "Medicare", "Medicaid", "false claims" → Health Care Fraud
-  2. Priority order: Check in this sequence:
-    - Drug Enforcement (most specific)
-    - Bribery/Corruption (kickbacks are common)
-    - Financial Fraud (non-healthcare financial crimes)
-    - Health Care Fraud (most common category)
-    - Other (everything else)
-  3. Overlap handling: Some cases involve multiple elements (e.g., kickbacks for Medicare fraud). Prioritize:
-    - If drugs are involved → Drug Enforcement
-    - If kickbacks/bribes are primary → Bribery/Corruption
-    - Otherwise → Health Care Fraud
-
-
+I have access to Claude code, so first I'm going to filter the data to only 'Criminal and Civil Actions' and write it to a csv so Claude can read it.
 
 ```{python}
 
+crim_only = data[data['Category'] == 'Criminal and Civil Actions']
+
+crim_only.to_csv('cca_only_data.csv')
+
 ```
+
+I then gave Claude the following instructions:
+
+  "I want your help classifying all of the actions in cca_data_only.csv based on their titles. My instructions for this are to classify these into the following five categories: "“Health Care Fraud”, “Financial Fraud”, “Drug Enforcement”, “Bribery/Corruption”, and “Other”. Hint: You will need to divide the five topics manually by looking at the title and assigning the relevant topic. For example, if you find the word “bank” or “financial” in the title of an action, then that action should probably belong to “Financial Fraud” topic.""
+
+It read the file and wrote a script which is largely just the patterns it identified. I have reviewed and adapted it and applied it to my specific task, which is applying it to "crim_only":
+
+```{python}
+
+def classify_enforcement_action(title):
+    """
+    Classify enforcement action based on title keywords.
+    Priority order: Drug Enforcement > Bribery/Corruption > Financial Fraud > Health Care Fraud > Other
+    """
+    title_lower = title.lower()
+
+    # Drug Enforcement - Check first (most specific)
+    drug_keywords = [
+        'opioid', 'oxycodone', 'controlled substance', 'fentanyl', 'hydrocodone',
+        'illegal distribution', 'drug diversion', 'prescription fraud', 'narcotics',
+        'distribute and dispense', 'illegally distribut', 'adulterated', 'misbranded',
+        'drug', 'pharmaceutical', 'pharmacy fraud', 'pill mill', 'morphine',
+        'codeine', 'methadone', 'suboxone', 'buprenorphine', 'amphetamine',
+        'distributing controlled', 'dispensing controlled', 'unlawful distribution'
+    ]
+
+    # Bribery/Corruption - Check second
+    bribery_keywords = [
+        'kickback', 'bribe', 'bribery', 'corruption', 'illegal remuneration',
+        'paying kickback', 'receiving kickback', 'anti-kickback', 'kickback scheme',
+        'kickback conspiracy', 'corrupt', 'pay to play', 'quid pro quo',
+        'inducement', 'referral fee', 'illegal payment'
+    ]
+
+    # Financial Fraud - Check third
+    financial_keywords = [
+        'money laundering', 'bank fraud', 'wire fraud', 'mail fraud',
+        'securities fraud', 'investment fraud', 'ponzi', 'embezzle',
+        'tax fraud', 'tax evasion', 'financial fraud', 'credit card fraud',
+        'identity theft', 'aggravated identity', 'stolen identity',
+        'financial institution', 'banker', 'banking', 'securities',
+        'insider trading', 'accounting fraud', 'financial statement'
+    ]
+
+    # Health Care Fraud - Most common, check fourth
+    healthcare_keywords = [
+        'medicare', 'medicaid', 'false claim', 'false billing', 'health care fraud',
+        'healthcare fraud', 'medical fraud', 'billing fraud', 'upcoding',
+        'unbundling', 'phantom billing', 'unnecessary service', 'unnecessary procedure',
+        'hospice fraud', 'home health', 'durable medical equipment', 'dme fraud',
+        'patient dumping', 'stark law', 'self-referral', 'false statement',
+        'fraudulent claim', 'fraudulent billing', 'genetic test', 'telemedicine fraud',
+        'covid-19 relief', 'covid relief', 'cares act', 'ppp fraud', 'eidl fraud',
+        'laboratory fraud', 'diagnostic test', 'compound cream', 'pain cream',
+        'ambulance fraud', 'dialysis fraud', 'nursing home', 'skilled nursing',
+        'physical therapy fraud', 'occupational therapy', 'speech therapy fraud',
+        'fraudulently bill', 'submit false', 'submitting false'
+    ]
+
+    # Check in priority order
+
+    # 1. Drug Enforcement
+    for keyword in drug_keywords:
+        if keyword in title_lower:
+            # Special case: if it's about medical devices or equipment, might be healthcare
+            if 'medical device' in title_lower and 'adulterat' in title_lower:
+                return 'Drug Enforcement'  # Adulterated medical devices
+            elif 'distribut' in title_lower and any(drug in title_lower for drug in ['opioid', 'oxycodone', 'controlled', 'fentanyl']):
+                return 'Drug Enforcement'
+            elif any(drug in title_lower for drug in ['opioid', 'oxycodone', 'controlled substance', 'fentanyl', 'hydrocodone']):
+                return 'Drug Enforcement'
+
+    # 2. Bribery/Corruption
+    for keyword in bribery_keywords:
+        if keyword in title_lower:
+            return 'Bribery/Corruption'
+
+    # 3. Financial Fraud
+    for keyword in financial_keywords:
+        if keyword in title_lower:
+            # Check if it's primarily healthcare-related despite having financial elements
+            if any(hc in title_lower for hc in ['medicare', 'medicaid', 'health care', 'healthcare', 'medical']):
+                return 'Health Care Fraud'
+            return 'Financial Fraud'
+
+    # 4. Health Care Fraud
+    for keyword in healthcare_keywords:
+        if keyword in title_lower:
+            return 'Health Care Fraud'
+
+    # Additional checks for Health Care Fraud (common patterns)
+    if any(pattern in title_lower for pattern in [
+        'physician', 'doctor', 'nurse', 'hospital', 'clinic', 'medical',
+        'health', 'patient', 'treatment', 'therapy', 'diagnostic',
+        'laboratory', 'pharmacy', 'prescription', 'ambulance'
+    ]):
+        # Check if it's not about drugs or kickbacks
+        if not any(drug in title_lower for drug in ['opioid', 'controlled substance', 'distribut']):
+            if 'kickback' not in title_lower and 'bribe' not in title_lower:
+                return 'Health Care Fraud'
+
+    # 5. Other - Everything else
+    # This includes: assault, abuse, obstruction of justice, general theft, etc.
+    return 'Other'
+
+```
+
+```{python}
+
+crim_only['Topic'] = crim_only['Title'].apply(classify_enforcement_action)
+
+crim_only[['Title', 'Topic']].head()
+
+```
+
+Now, plot as instructed:
+
+```{python}
+
+cca_plot = alt.Chart(crim_only).mark_line().encode(
+  x=alt.X('yearmonth(Date):T', title='Month and Year'),
+  y=alt.Y('count():Q', title='Number of Occurrences'),
+  color=alt.Color('Topic', legend=alt.Legend(title='Type of Action'))
+).properties(
+  title='Frequency of 5 Criminal and Civil Enforcement Actions over Time'
+)
+
+cca_plot
+```
+
